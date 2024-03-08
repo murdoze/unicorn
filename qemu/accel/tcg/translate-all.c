@@ -20,6 +20,7 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qemu-common.h"
+#include <stdint.h>
 
 #define NO_CPU_IO_DEFS
 #include "cpu.h"
@@ -1727,7 +1728,11 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
 
     max_insns = cflags & CF_COUNT_MASK;
     if (max_insns == 0) {
-        max_insns = CF_COUNT_MASK;
+        if (cpu->uc->emu_count > 0) {
+            max_insns = cpu->uc->emu_count;
+        } else {
+            max_insns = CF_COUNT_MASK;
+        }
     }
     if (max_insns > TCG_MAX_INSNS) {
         max_insns = TCG_MAX_INSNS;
@@ -1925,6 +1930,12 @@ tb_invalidate_phys_page_range__locked(struct uc_struct *uc, struct page_collecti
                  * would require a specialized function to partially
                  * restore the CPU state.
                  */
+                if (uc->emu_count > 0) {
+                    /* If the instruction count hook is present ... */
+                    g_assert(uc->emu_counter > 0);
+                    /* ... uncount the last instruction, which has caused emulation interruption */
+                    uc->emu_counter--;
+                }
                 current_tb_modified = true;
                 cpu_restore_state_from_tb(cpu, current_tb, retaddr, true);
                 cpu_get_tb_cpu_state(env, &current_pc, &current_cs_base,
